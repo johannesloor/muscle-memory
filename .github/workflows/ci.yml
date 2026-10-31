@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Tests exercise mm_setup(git=True) and mm_save, both of which run `git commit`;
+      # a bare CI runner has no git identity configured, so set one before running them.
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.name "muscle-memory-mcp CI"
+          git config --global user.email "ci@example.invalid"
+
+      - name: Run tests
+        run: uv run python -X warn_default_encoding -W error::EncodingWarning -m unittest discover -s tests -v

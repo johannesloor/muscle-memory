@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "muscle-memory-mcp"
+dynamic = ["version"]
+description = "MCP server that gives your agent a library of its own tested, reusable scripts."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Johannes Loor" }]
+dependencies = []
+keywords = ["mcp", "mcp-server", "model-context-protocol", "ai-agents", "claude-code", "codex",
+            "cursor", "automation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development",
+]
+
+[project.urls]
+Homepage = "https://github.com/johannesloor/muscle-memory"
+Repository = "https://github.com/johannesloor/muscle-memory"
+Issues = "https://github.com/johannesloor/muscle-memory/issues"
+
+[project.scripts]
+muscle-memory-mcp = "muscle_memory_mcp.cli:main"
+
+[tool.hatch.version]
+path = "src/muscle_memory_mcp/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/muscle_memory_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "LICENSE", "pyproject.toml", "server.json"]
