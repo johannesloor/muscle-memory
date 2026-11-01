@@ -1,8 +1,9 @@
 """INDEX.md parsing and editing: CRLF-tolerant, preserving whatever newline style is on disk.
 
 INDEX.md is a Markdown file with one '## Area' heading per area and one line per script
-underneath it. Callers read it with encoding="utf-8", newline="" so the exact bytes (including
-CRLF, if a human hand-edited it on Windows) are preserved until written back.
+underneath it, with a blank line between entries so rendered Markdown keeps them apart.
+Callers read it with encoding="utf-8", newline="" so the exact bytes (including CRLF, if a
+human hand-edited it on Windows) are preserved until written back.
 """
 import re
 
@@ -41,6 +42,6 @@ def add_index_line(text, area, entry):
         if last == start:
             lines[start + 1:start + 1] = ["", entry]
         else:
-            lines.insert(last + 1, entry)
+            lines[last + 1:last + 1] = ["", entry]  # blank line: Markdown would merge adjacent lines
         result = "\n".join(lines) + "\n"
     return result.replace("\n", newline) if newline != "\n" else result

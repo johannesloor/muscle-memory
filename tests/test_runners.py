@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -40,12 +41,10 @@ class TestRunnerFor(unittest.TestCase):
 
 class TestRunProcess(unittest.TestCase):
     def test_utf8_output(self):
-        script = Path(__file__).resolve().parent / "_utf8_echo.py"
-        script.write_text("print('å ä ö ✓')\n", encoding="utf-8")
-        try:
-            code, out, err = runners.run_process([sys.executable, str(script)], Path.cwd(), None, 30)
-        finally:
-            script.unlink()
+        with tempfile.TemporaryDirectory() as d:
+            script = Path(d) / "_utf8_echo.py"
+            script.write_text("print('å ä ö ✓')\n", encoding="utf-8")
+            code, out, err = runners.run_process([sys.executable, str(script)], Path(d), None, 30)
         self.assertEqual(code, 0, err)
         self.assertEqual(out, "å ä ö ✓\n")
 

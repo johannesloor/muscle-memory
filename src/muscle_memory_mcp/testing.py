@@ -20,6 +20,10 @@ def test_metadata_path(lib_root: Path, name: str) -> Path:
 
 def run_test(lib_root: Path, name: str, timeout: int = 600) -> tuple[bool, str]:
     lib_root = Path(lib_root).resolve()
+    from . import paths, trust
+    project = paths.project_root()
+    if project is not None and lib_root == (project / ".muscle-memory").resolve():
+        trust.require(lib_root)
     script = (lib_root / "scripts" / name).resolve()
     metadata = test_metadata_path(lib_root, name)
     meta = json.loads(metadata.read_text(encoding="utf-8")) if metadata.exists() else None
@@ -38,12 +42,14 @@ def run_test(lib_root: Path, name: str, timeout: int = 600) -> tuple[bool, str]:
     else:
         if meta and "runner" in meta:
             argv = runners.validate_runner_argv(meta["runner"])
-            argv = [runners._resolve_executable(argv[0], t_path.name), *argv[1:]]
+            argv = [runners.resolve_executable(argv[0], t_path.name), *argv[1:]]
         elif meta:
-            argv = runners._builtin_argv_prefix(t_path.suffix.lower())
-            argv = [runners._resolve_executable(argv[0], t_path.name), *argv[1:]]
+            argv = runners.builtin_argv_prefix(t_path.suffix.lower())
+            argv = [runners.resolve_executable(argv[0], t_path.name), *argv[1:]]
         else:
             argv = runners.runner_for(script)
+    if not t_path.is_file():
+        raise ValueError(f"no test file found for {name}: expected {t_path}")
     cmd = [*argv, str(t_path)]
     env = {"MM_SCRIPT": str(script), "MM_LIBRARY": str(lib_root)}
     try:

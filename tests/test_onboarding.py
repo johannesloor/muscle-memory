@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from muscle_memory_mcp import onboarding, server, store
+from muscle_memory_mcp import onboarding, server, store, trust
 
 CODE = "print('ok')\n"
 GOOD_TEST = ("import os, subprocess, sys\n"
@@ -17,6 +17,8 @@ class OnboardingTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
+        self._trust_patch = mock.patch.object(trust, "_state_path", return_value=self.root / "trust.json")
+        self._trust_patch.start()
         self.old_personal = os.environ.get("MUSCLE_MEMORY_DIR")
         self.old_project = os.environ.get("MUSCLE_MEMORY_PROJECT_DIR")
         os.environ["MUSCLE_MEMORY_DIR"] = str(self.root / "personal")
@@ -29,6 +31,7 @@ class OnboardingTests(unittest.TestCase):
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+        self._trust_patch.stop()
         self.tmp.cleanup()
 
     def test_missing_personal_returns_not_set_up(self):
@@ -82,6 +85,7 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn(".muscle-memory/", exclude.read_text(encoding="utf-8"))
         self.assertIn("private", text)
 
+        trust.approve(project / ".muscle-memory")
         ok, msg = store.save("new.py", CODE, GOOD_TEST, "General", "new.py \u2014 new [pure]",
                               scope="project", new_area=True, push=False)
         self.assertTrue(ok, msg)
@@ -114,6 +118,7 @@ class OnboardingTests(unittest.TestCase):
             exclude = worktree / exclude
         self.assertIn(".muscle-memory/", exclude.read_text(encoding="utf-8"))
 
+        trust.approve(worktree / ".muscle-memory")
         ok, msg = store.save("new.py", CODE, GOOD_TEST, "General", "new.py \u2014 new [pure]",
                               scope="project", new_area=True, push=False)
         self.assertTrue(ok, msg)

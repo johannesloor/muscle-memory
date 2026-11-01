@@ -42,6 +42,9 @@ class LibrariesTestCase(unittest.TestCase):
         os.environ["USERPROFILE"] = str(self.home)
         self._home_patch = mock.patch.object(Path, "home", return_value=self.home)
         self._home_patch.start()
+        from muscle_memory_mcp import trust
+        self._trust_patch = mock.patch.object(trust, "_state_path", return_value=self.base / "trust.json")
+        self._trust_patch.start()
         self._cwd = os.getcwd()
 
     def tearDown(self):
@@ -56,6 +59,8 @@ class LibrariesTestCase(unittest.TestCase):
 
     def set_project(self):
         os.environ["MUSCLE_MEMORY_PROJECT_DIR"] = str(self.project_dir)
+        from muscle_memory_mcp import trust
+        trust.approve(self.project)
 
 
 class TestMergedListing(LibrariesTestCase):
@@ -203,6 +208,14 @@ class TestIndexCrlfAndUtf8(unittest.TestCase):
         result = index.add_index_line(text, "Shopping", "b.py Y [pure]")
         self.assertIn("b.py Y [pure]", result)
         self.assertEqual(result.count("\n"), result.count("\r\n"))  # every \n is part of \r\n
+
+    def test_new_entry_is_separated_by_a_blank_line(self):
+        # Markdown merges adjacent lines into one paragraph; a blank line keeps entries apart.
+        text = "# idx\n\n## Shopping\n\na.py X [pure]\n\n## Other\n\nc.py Z [pure]\n"
+        result = index.add_index_line(text, "Shopping", "b.py Y [pure]")
+        self.assertEqual(result, "# idx\n\n## Shopping\n\na.py X [pure]\n\nb.py Y [pure]\n\n## Other\n\nc.py Z [pure]\n")
+        last = index.add_index_line(text, "Other", "d.py W [pure]")
+        self.assertTrue(last.endswith("c.py Z [pure]\n\nd.py W [pure]\n"))
 
     def test_utf8_index_roundtrip(self):
         text = "# idx\n\n## Hälsa\n\ntrain.py — öva [pure]\n"

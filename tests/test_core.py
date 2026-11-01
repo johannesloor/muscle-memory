@@ -69,6 +69,7 @@ class TestList(Lib):
         self.assertIn("- Files (1)", out)
         self.assertIn("- Shopping (1)", out)
         self.assertNotIn("product_page.py", out)  # areas only, never scripts
+        self.assertNotIn("List an area's scripts", out)
 
     def test_area_lines_case_insensitive(self):
         name, lines = core.area_lines("shopping")
@@ -112,8 +113,8 @@ class TestSave(Lib):
         ok, _ = core.save("double.py", GOOD_CODE, GOOD_TEST, "Shopping", "double.py N — x [pure]", push=False)
         self.assertTrue(ok)
         lines = (self.d / "INDEX.md").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(lines[lines.index("product_page.py URL — print price, stock and image from a product page [read]") + 1],
-                         "double.py N — x [pure]")
+        i = lines.index("product_page.py URL — print price, stock and image from a product page [read]")
+        self.assertEqual(lines[i + 1:i + 3], ["", "double.py N — x [pure]"])
 
     def test_failing_test_rolls_back(self):
         ok, msg = core.save("double.py", GOOD_CODE, BAD_TEST, "Math", "x [pure]", push=False, new_area=True)

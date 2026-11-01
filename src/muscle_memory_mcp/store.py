@@ -7,7 +7,8 @@ refused, never silently shadowed), and git behaviour that follows the target fol
 flag:
 
 - personal library: not a git repo -> files only; a git repo with no remote -> commit; a repo
-  with a remote -> commit and push (a failed push keeps the commit).
+  with a remote -> commit, and push if the user chose that at setup or push=True (a failed push
+  keeps the commit).
 - project library: never commits or pushes (that would mix into the user's own branch); it
   reports which paths changed so the user commits them, and -- once -- warns if the folder is now
   inside git but was never marked shared or private (see mm_setup, Task 6).
@@ -23,13 +24,14 @@ from pathlib import Path
 
 from . import paths, runners, testing
 from .index import add_index_line, parse_index
+from .onboarding import GIT_ALLOW_PROTOCOL
 from .runners import validate_runner_argv
 
 NAME_RE = re.compile(r"[a-z][a-z0-9_]*\.[a-z][a-z0-9]{0,9}")
 
 # Never prompts for credentials (ruling f): a push to a bogus/unreachable remote fails fast
 # instead of hanging on a terminal prompt.
-GIT_ENV = {"GIT_TERMINAL_PROMPT": "0"}
+GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_ALLOW_PROTOCOL": GIT_ALLOW_PROTOCOL}
 
 
 def _read_index_text(root):
@@ -139,7 +141,14 @@ def _save_personal_git(root, name, usage, add_paths, is_update, push):
     code, _, _ = _run_git(root, "rev-parse", "--git-dir", timeout=10)
     if code != 0:
         return "saved, tests pass (not under git)"
-    code, _, err = _run_git(root, "add", *add_paths)
+    missing = [p for p in add_paths if not (root / p).exists()]
+    if missing:
+        code, tracked, err = _run_git(root, "ls-files", "-z", "--", *missing)
+        if code != 0:
+            return "saved, tests pass; not committed: git ls-files failed: " + err.strip()[-300:]
+        tracked = set(tracked.split("\0"))
+        add_paths = [p for p in add_paths if p not in missing or p in tracked]
+    code, _, err = _run_git(root, "add", "--", *add_paths)
     if code != 0:
         return "saved, tests pass; not committed: git add failed: " + err.strip()[-300:]
     message = _commit_message("Update" if is_update else "Add", name, usage)
@@ -147,6 +156,9 @@ def _save_personal_git(root, name, usage, add_paths, is_update, push):
     if code != 0:
         return "saved, tests pass; commit failed: " + err.strip()[-300:]
     msg = "saved, tests pass, committed"
+    if push is None:  # the user's choice from setup, kept in the library's local git config
+        _, value, _ = _run_git(root, "config", "--local", "--get", "muscle-memory.push", timeout=10)
+        push = value.strip() == "true"
     _, remote_out, _ = _run_git(root, "remote", timeout=10)
     if push and remote_out.strip():
         pcode, _, perr = _run_git(root, "push", timeout=60)
@@ -171,6 +183,7 @@ def _replace_index_entry(text, name, new_area, new_line):
         result = "\n".join(lines) + "\n"
     else:
         lines = [l for l in lines if l.strip() != old["line"]]
+        lines = [l for i, l in enumerate(lines) if l.strip() or i == 0 or lines[i - 1].strip()]  # no double blanks
         result = add_index_line("\n".join(lines) + "\n", new_area, new_line)
         result = result.replace("\r\n", "\n")  # add_index_line saw no \r\n in our '\n'-only input
     return result.replace("\n", newline) if newline != "\n" else result
@@ -194,13 +207,17 @@ def _guard_targets(root, targets):
 
 
 def save(name, code, test, area, usage, *, scope="personal", new_area=False, runner=None,
-          test_name=None, test_runner=None, replace=False, push=True):
+          test_name=None, test_runner=None, replace=False, push=None):
     """Save name (+ test, + optional runner sidecar) into scope's library.
 
     Returns (ok, message). Raises ValueError for a bad name/area/runner, an unresolvable project
     scope, or a clash in the *other* library. A failing test gate returns (False, ...); with
-    replace=True the previous script/test/sidecar bytes are restored exactly first.
+    replace=True the previous script/test/sidecar bytes are restored exactly first. An untrusted
+    project library raises before anything is written or run.
     """
+    for label, value in (("area", area), ("usage", usage)):
+        if not isinstance(value, str) or "\n" in value or "\r" in value:
+            raise ValueError(f"{label} must be a single line of text (INDEX.md has one line per entry)")
     if not NAME_RE.fullmatch(name):
         raise ValueError("name must look like snake_case.ext (lowercase letters/digits/underscore, "
                           "then a lowercase extension, e.g. greet.py, greet.sh, greet.swift)")
@@ -259,6 +276,10 @@ def save(name, code, test, area, usage, *, scope="personal", new_area=False, run
     if not exists and replace:
         raise ValueError(f"{name} does not exist yet; call save without replace to create it")
 
+    from . import trust
+    if scope == "project":
+        trust.require(root)  # before writing or running anything
+
     if not usage.startswith(name):
         usage = f"{name} {usage}"
 
@@ -286,6 +307,8 @@ def save(name, code, test, area, usage, *, scope="personal", new_area=False, run
         test_meta_path.unlink(missing_ok=True)
     if runner is not None:
         runner_path.write_text(json.dumps({"argv": runner}) + "\n", encoding="utf-8")
+    else:
+        runner_path.unlink(missing_ok=True)
 
     try:
         ok, test_msg = testing.run_test(root, name)
@@ -335,10 +358,12 @@ def save(name, code, test, area, usage, *, scope="personal", new_area=False, run
         f.write(new_text)
 
     add_paths = [f"scripts/{name}", test_file.relative_to(root).as_posix(), "INDEX.md"]
-    if runner_path.exists():
+    if runner_path.exists() or (backup is not None and backup["runner"] is not None):
         add_paths.append(f"scripts/{name}.runner.json")
-    if test_meta_path.exists():
+    if test_meta_path.exists() or (backup is not None and backup["test_meta"] is not None):
         add_paths.append(f"scripts/{name}.test.json")
+    if backup is not None and backup["old_test_path"] is not None and backup["old_test"] is not None:
+        add_paths.append(backup["old_test_path"].relative_to(root).as_posix())
 
     if scope == "personal":
         msg = _save_personal_git(root, name, usage, add_paths, is_update=replace, push=push)

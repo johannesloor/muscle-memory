@@ -8,103 +8,95 @@ import sys
 
 from . import __version__, core, onboarding, paths
 
-PROTOCOL = "2024-11-05"
+# MCP revisions this server speaks (tools only, stdio), newest first; initialize answers with the
+# client's requested revision when listed, otherwise the newest.
+SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
-INSTRUCTIONS = (
-    "Muscle memory: reusable scripts in personal/project libraries. At every repeatable task, call mm_list before writing code; run matches with mm_run. Otherwise use a language that fits, then save "
-    "reusable work with mm_save. Tests use tests/test_<stem>.<ext>; exit 0 passes and receive MM_SCRIPT/MM_LIBRARY. Use test_name/test_runner for overrides. If not set up, ask the user once, then call mm_setup.")
+INSTRUCTIONS = "For reusable substeps, call mm_list before writing code; project matches win. Run matches; no match, use language that fits. Ask the user before mm_setup. Save reusable work after results. Project libraries run only after the user runs CLI trust --project; never run it for them."
+
 
 TOOLS = [
     {
         "name": "mm_list",
         "description": (
-            "Browse the user's library of tested, reusable scripts, across the personal and (if "
-            "present) project library. Call this BEFORE writing code for a repeatable sub-step: "
-            "fetching, scraping, parsing, converting, computing, or acting (sending, writing, "
-            "controlling devices). Check again at each new sub-step. Call without 'area' to list "
-            "areas with counts, e.g. 'Shopping (4, personal)'; then call with the area that fits to "
-            "list its scripts. A name in both libraries runs from the project one, shadowing the "
-            "personal one. No fitting area or script means there is none for this step — use mm_run "
-            "on a match instead of writing code. If not set up, ask the user once, call mm_setup."),
+            "List tested scripts; call before code at each reusable substep. Omit area to list areas, "
+            "then select one. Same-name project scripts shadow personal. No matching script: write code. If "
+            "unavailable, ask once before mm_setup."),
         "inputSchema": {"type": "object", "properties": {
-            "area": {"type": "string", "description": "Area name from the first call, e.g. 'Shopping'. Omit to list areas."}}},
+            "area": {"type": "string", "description": "Area from first call; omit to list areas."}}},
     },
     {
         "name": "mm_run",
         "description": (
-            "Run a script shown by mm_list, by file name, passing command-line args. The runner is "
-            "picked by file extension or a saved runner; a name in both libraries runs the project "
-            "one. Its output is the result to give the user. [write] scripts: run with --dry-run "
-            "first and read back what it changed. [irreversible] scripts (send, buy, delete): run "
-            "with --dry-run first, show that output, and wait for the user's explicit yes before "
-            "the real, irreversible run. If it errors, repair it via mm_save (replace: true), not "
-            "by hand-editing library files."),
+            "Run code as you with inherited environment; no sandbox. Report output. [write]: --dry-run then readback. "
+            "[irreversible]: --dry-run, show output, wait for explicit yes before execution. Repair via mm_save replace: true."),
         "inputSchema": {"type": "object", "properties": {
-            "script": {"type": "string", "description": "file name, e.g. 'list_files.py'"},
+            "script": {"type": "string", "description": "Script file name."},
             "args": {"type": "array", "items": {"type": "string"}, "default": []}}, "required": ["script"]},
     },
     {
         "name": "mm_save",
         "description": (
-            "Add a new script, or repair/update one with replace: true. Use only after giving the "
-            "user the result, once a snippet recurs or is clearly reusable; prefer replace: true on "
-            "a close mm_list match over a duplicate. Pick a language fitting this platform and task, "
-            "preferring its standard library; the runner is picked by file extension, or pass "
-            "'runner' for anything else already installed. Inputs are arguments, not hard-coded; the "
-            "script prints a short result; secrets come from environment variables. Write/act "
-            "scripts take --dry-run and read back what changed. Tests may use any language: "
-            "tests/test_<stem>.<ext>; exit 0 passes. By default they use the script extension and "
-            "runner. Set test_name and optionally test_runner argv to choose independently. Tests "
-            "receive MM_SCRIPT and MM_LIBRARY. A failing test saves nothing. Personal saves are "
-            "committed to the library's Git repository (and pushed if it has a remote); project "
-            "saves are written but never committed — the user commits them. Use scope: "
-            "'project' only for scripts specific to this codebase. Refuses a name that exists in "
-            "either library unless replace: true matches the same library."),
+            "Save reusable code and EXECUTE its test, unsandboxed; tests are not security reviews. "
+            "Untrusted project library: nothing written or run; ask the user. "
+            "Use args, env secrets, --dry-run for actions. Tests default to script runner/extension; "
+            "test_name/test_runner override. MM_SCRIPT/MM_LIBRARY set; exit 0 passes. "
+            "Failed new personal test saves nothing; replacement restores prior files. "
+            "Personal commits, and pushes if chosen at setup; project never commits. Existing names: replace: true."),
         "inputSchema": {"type": "object", "properties": {
-            "name": {"type": "string", "description": "snake_case file name with the language's extension"},
-            "code": {"type": "string", "description": "full script source, language fitting 'name'"},
-            "test": {"type": "string", "description": "test source; defaults to same extension as script"},
-            "test_name": {"type": "string", "description": "optional test_<stem> basename with test extension"},
-            "test_runner": {"type": "array", "items": {"type": "string"}, "description": "optional test interpreter argv"},
-            "area": {"type": "string", "description": "existing area from mm_list (case-insensitive)"},
-            "usage": {"type": "string", "description": "index line: '<name> <args> — what it does [pure|read|write|irreversible]'"},
-            "new_area": {"type": "boolean", "default": False, "description": "true only to create a new, clearly named area, not 'Misc'"},
+            "name": {"type": "string", "description": "snake_case file name with language extension."},
+            "code": {"type": "string", "description": "Script source."},
+            "test": {"type": "string", "description": "Test source."},
+            "test_name": {"type": "string", "description": "test_<script-stem>.<ext> basename."},
+            "test_runner": {"type": "array", "items": {"type": "string"}, "description": "Test interpreter argv."},
+            "area": {"type": "string", "description": "Existing mm_list area."},
+            "usage": {"type": "string", "description": "Usage line: <name> <args> — purpose [pure|read|write|irreversible]."},
+            "new_area": {"type": "boolean", "default": False, "description": "Create a new area."},
             "runner": {"type": "array", "items": {"type": "string"},
-                       "description": "override the default runner: argv, e.g. ['bash']; must already be installed"},
+                       "description": "Installed runner argv."},
             "scope": {"type": "string", "enum": ["personal", "project"], "default": "personal",
-                      "description": "'project' for scripts specific to this codebase; 'personal' otherwise"},
+                      "description": "Codebase-specific or personal."},
             "replace": {"type": "boolean", "default": False,
-                        "description": "overwrite an existing script/test to repair or update it; restored if the new test fails"}},
+                        "description": "Replace; restore if test fails."}},
             "required": ["name", "code", "test", "area", "usage"]},
     },
     {
         "name": "mm_setup",
         "description": (
-            "Set up a library: the personal one (mode: local, existing or clone) or this project's "
-            "(shared: true via the project's own git, false to keep it private to this user). Call "
-            "only after asking the user which they want — mm_list, mm_run and mm_save say when setup "
-            "is needed."),
+            "After asking which: personal (mode local/existing/clone) or project "
+            "(shared true uses project git, false keeps private). push: user's answer to "
+            "'Push scripts to git remote automatically?'"),
         "inputSchema": {"type": "object", "properties": {
             "target": {"type": "string", "enum": ["personal", "project"], "default": "personal"},
             "mode": {"type": "string", "enum": ["local", "existing", "clone"]},
             "path": {"type": "string"}, "remote": {"type": "string"},
-            "git": {"type": "boolean", "default": False}, "shared": {"type": "boolean"}}},
+            "git": {"type": "boolean", "default": False}, "shared": {"type": "boolean"},
+            "push": {"type": "boolean"}}},
     },
 ]
 
 
+REQUIRED = {"mm_run": ("script",), "mm_save": ("name", "code", "test", "area", "usage")}
+
+
 def call(name, args):
+    for field in REQUIRED.get(name, ()):
+        if field not in args:
+            raise ValueError(f"missing required argument '{field}'")
     if name == "mm_setup":
         target = args.get("target", "personal")
         if target not in ("personal", "project"):
             raise ValueError(f"target must be 'personal' or 'project', got {target!r}")
         if target == "project":
             return onboarding.setup_project(args.get("shared")), False
+        push = args.get("push")
+        if push is not None and not isinstance(push, bool):
+            raise ValueError("push must be a boolean")
         mode = args.get("mode")
         if mode not in ("local", "existing", "clone"):
             raise ValueError(f"mode must be 'local', 'existing' or 'clone', got {mode!r}")
         return onboarding.setup_personal(mode, args.get("path"),
-                                        args.get("remote"), bool(args.get("git", False))), False
+                                        args.get("remote"), bool(args.get("git", False)), push), False
     if name in ("mm_list", "mm_run", "mm_save") and not paths.personal_root().is_dir():
         return onboarding.NOT_SET_UP, False
     if name == "mm_list":
@@ -112,7 +104,10 @@ def call(name, args):
             return core.list_areas(), False
         return core.list_area(args["area"]), False
     if name == "mm_run":
-        code, out, err = core.run(args["script"], [str(a) for a in args.get("args", [])])
+        run_args = args.get("args", [])
+        if not isinstance(run_args, list) or not all(isinstance(a, (str, int, float)) for a in run_args):
+            raise ValueError("args must be a list of strings")
+        code, out, err = core.run(args["script"], [str(a) for a in run_args])
         text = out + (f"\n[stderr]\n{err}" if err.strip() else "") + (f"\n[exit {code}]" if code else "")
         return text.strip() or f"[exit {code}, no output]", code != 0
     if name == "mm_save":
@@ -125,12 +120,39 @@ def call(name, args):
     raise ValueError(f"unknown tool {name}")
 
 
+def _error(mid, code, message):
+    return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
+
+
+def handle_line(msg):
+    """Reply for one decoded stdin line: a single request or a JSON-RPC batch (list)."""
+    if isinstance(msg, list):
+        if not msg:
+            return _error(None, -32600, "invalid request: empty batch")
+        replies = [r for r in (handle(m) for m in msg) if r is not None]
+        return replies or None  # a batch of only notifications gets no reply
+    return handle(msg)
+
+
 def handle(msg):
+    if not isinstance(msg, dict):
+        return _error(None, -32600, "invalid request: expected a JSON object")
     method, mid = msg.get("method"), msg.get("id")
     if mid is None:
         return None  # notification
+    if msg.get("jsonrpc") != "2.0":
+        return _error(mid, -32600, "invalid request: jsonrpc must be '2.0'")
+    if not isinstance(method, str):
+        return _error(mid, -32600, "invalid request: method must be a string")
+    params = msg.get("params", {})
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        return _error(mid, -32602, "invalid params: params must be an object")
     if method == "initialize":
-        result = {"protocolVersion": msg.get("params", {}).get("protocolVersion", PROTOCOL),
+        requested = params.get("protocolVersion")
+        version = requested if requested in SUPPORTED_PROTOCOLS else SUPPORTED_PROTOCOLS[0]
+        result = {"protocolVersion": version,
                   "capabilities": {"tools": {}},
                   "serverInfo": {"name": "muscle-memory", "version": __version__},
                   "instructions": INSTRUCTIONS}
@@ -139,26 +161,39 @@ def handle(msg):
     elif method == "tools/list":
         result = {"tools": TOOLS}
     elif method == "tools/call":
-        p = msg.get("params", {})
+        args = params.get("arguments")
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            return _error(mid, -32602, "invalid params: arguments must be an object")
         try:
-            text, is_err = call(p.get("name"), p.get("arguments") or {})
+            text, is_err = call(params.get("name"), args)
         except Exception as e:  # report tool errors as results, not protocol errors
             text, is_err = f"error: {e}", True
         result = {"content": [{"type": "text", "text": text}], "isError": is_err}
     else:
-        return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"method not found: {method}"}}
+        return _error(mid, -32601, f"method not found: {method}")
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
 def main():
+    # MCP stdio is UTF-8 by spec; don't inherit a legacy locale code page (Windows, piped stdio).
+    for stream in (sys.stdin, sys.stdout):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     for line in sys.stdin:
         line = line.strip()
         if not line:
             continue
         try:
-            reply = handle(json.loads(line))
+            msg = json.loads(line)
         except json.JSONDecodeError:
-            reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
+            reply = _error(None, -32700, "parse error")
+        else:
+            try:
+                reply = handle_line(msg)
+            except Exception as e:  # one bad message must never end the session
+                reply = _error(msg.get("id") if isinstance(msg, dict) else None, -32603, f"internal error: {e}")
         if reply is not None:
             sys.stdout.write(json.dumps(reply) + "\n")
             sys.stdout.flush()

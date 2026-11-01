@@ -75,7 +75,7 @@ The personal library defaults to `~/.muscle-memory` (`%USERPROFILE%\.muscle-memo
 
 An optional `.muscle-memory/` project library holds scripts specific to one codebase. Project-root detection depends on the MCP client's working directory. Set `MUSCLE_MEMORY_PROJECT_DIR` to the project's absolute path in the server environment to override detection explicitly. When a script name exists in both libraries, the project copy takes precedence; listings mark the personal copy as shadowed.
 
-For personal libraries, saves write files locally if the folder is not in git. In a git repo, saves commit the library changes and push if a remote is configured. Project libraries are never committed or pushed automatically: you commit them with your own work. On first project setup, the agent asks whether the library should be shared through git or kept private.
+For personal libraries, saves write files locally if the folder is not in git. If the library is a git repo, each saved script is committed. Setup asks whether to also push scripts to the git remote automatically; run setup again to change your answer. Project libraries are never committed or pushed automatically: you commit them with your own work. On first project setup, the agent asks whether the library should be shared through git or kept private.
 
 ## Tools
 
@@ -100,14 +100,16 @@ uvx muscle-memory-mcp run SCRIPT [ARGS...]
 uvx muscle-memory-mcp save NAME --code FILE --test FILE --area AREA --usage TEXT
 uvx muscle-memory-mcp setup [--target personal|project] [OPTIONS]
 uvx muscle-memory-mcp test [NAME]
+uvx muscle-memory-mcp trust --project
 ```
 
 With no arguments it starts the MCP server over stdio. `--help` lists the options.
 
-## Limits
+## Security and limits
 
-- Saved scripts run as you, with no review step before their first run.
-- Project-library detection depends on the client's working directory; use `MUSCLE_MEMORY_PROJECT_DIR` when automatic detection is unsuitable.
+- Scripts and tests run as you, with your environment and no sandbox. Passing tests is not a security review.
+- A project library runs only after you approve the project once with `uvx muscle-memory-mcp trust --project`.
+- Project-library detection depends on the client's working directory; set `MUSCLE_MEMORY_PROJECT_DIR` if needed.
 
 ## License
 

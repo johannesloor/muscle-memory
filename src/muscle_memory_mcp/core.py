@@ -60,8 +60,7 @@ def area_lines(area, text=None):
 def format_areas(pairs):
     if not pairs:
         return "The library is empty. Do the task, answer, then save a script if the step is reusable."
-    return ("Areas (script count):\n" + "\n".join(f"- {a} ({n})" for a, n in pairs)
-            + "\n\nList an area's scripts by calling again with that area. If no area fits, there is no script for this step.")
+    return "Areas (script count):\n" + "\n".join(f"- {a} ({n})" for a, n in pairs)
 
 
 def list_areas():
@@ -75,8 +74,7 @@ def list_areas():
     if not triples:
         return "The library is empty. Do the task, answer, then save a script if the step is reusable."
     lines = "\n".join(f"- {a} ({n}, {s})" for a, n, s in triples)
-    return ("Areas (script count):\n" + lines
-            + "\n\nList an area's scripts by calling again with that area. If no area fits, there is no script for this step.")
+    return "Areas (script count):\n" + lines
 
 
 def list_area(area):
@@ -130,7 +128,13 @@ def run(script, args, timeout=300):
     if not paths.personal_root().is_dir():
         raise ValueError(NOT_SET_UP)
     lib, p = resolve(script)
+    if lib.scope == "project":
+        from . import trust
+        trust.require(lib.root)
+    if p.suffix.lower() in runners.WINDOWS_ONLY_EXTENSIONS:
+        runners.check_cmd_args(p, ["cmd"], args)  # before runner_for, which refuses .bat off Windows
     argv = runners.runner_for(p)
+    runners.check_cmd_args(p, argv, args)
     cmd = [*argv, str(p), *args]
     try:
         return runners.run_process(cmd, cwd=Path(os.getcwd()), env=None, timeout=timeout)
@@ -139,7 +143,7 @@ def run(script, args, timeout=300):
 
 
 def save(name, code, test, area, usage, *, scope="personal", new_area=False, runner=None,
-         test_name=None, test_runner=None, replace=False, push=True):
+         test_name=None, test_runner=None, replace=False, push=None):
     """Compatibility wrapper; new callers should use store.save.
 
     Returns NOT_SET_UP for any scope when the personal library folder is missing, matching

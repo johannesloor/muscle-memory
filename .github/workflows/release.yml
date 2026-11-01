@@ -1,6 +1,6 @@
 name: Release
 
-# Tag-triggered release: run the test matrix once more on Linux, publish to PyPI via trusted
+# Tag-triggered release: run the full CI matrix (ci.yml) once more, publish to PyPI via trusted
 # publishing (OIDC, no stored secret), then publish the MCP Registry entry, also via GitHub
 # OIDC (no stored secret). No job in this workflow references a `secrets.*` value.
 on:
@@ -10,23 +10,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.13"
-
-      # Tests exercise mm_setup(git=True) and mm_save, both of which run `git commit`;
-      # a bare CI runner has no git identity configured, so set one before running them.
-      - name: Configure git identity for tests
-        run: |
-          git config --global user.name "muscle-memory-mcp CI"
-          git config --global user.email "ci@example.invalid"
-
-      - name: Run tests
-        run: uv run python -m unittest discover -s tests -v
+    uses: ./.github/workflows/ci.yml
 
   publish-pypi:
     needs: test
@@ -41,6 +25,23 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
+
+      # Fail fast rather than publish the wrong version: the pushed tag (minus the leading
+      # 'v') must equal the version in server.json and the package's __version__.
+      - name: Verify tag matches server.json and package version
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          server_version="$(python3 -c 'import json; print(json.load(open("server.json"))["version"])')"
+          if [ "$tag_version" != "$server_version" ]; then
+            echo "tag v$tag_version does not match server.json version $server_version" >&2
+            exit 1
+          fi
+          package_version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/muscle_memory_mcp/__init__.py)"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "tag v$tag_version does not match __version__ $package_version" >&2
+            exit 1
+          fi
 
       - name: Build sdist and wheel
         run: uv build
@@ -58,18 +59,6 @@ jobs:
       MCP_PUBLISHER_VERSION: v1.8.1
     steps:
       - uses: actions/checkout@v4
-
-      # Fail fast rather than publish the wrong version: the pushed tag (minus the leading
-      # 'v') must equal the version already recorded in server.json.
-      - name: Verify tag matches server.json version
-        run: |
-          set -euo pipefail
-          tag_version="${GITHUB_REF_NAME#v}"
-          server_version="$(python3 -c 'import json; print(json.load(open("server.json"))["version"])')"
-          if [ "$tag_version" != "$server_version" ]; then
-            echo "tag v$tag_version does not match server.json version $server_version" >&2
-            exit 1
-          fi
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2

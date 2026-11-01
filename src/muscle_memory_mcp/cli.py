@@ -20,6 +20,9 @@ from . import core, onboarding, paths, server, testing
 def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
+    for stream in (sys.stdout, sys.stderr):  # scripts may print any Unicode; never crash on a code page
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     if not argv:
         server.main()
         return 0
@@ -33,7 +36,9 @@ def main(argv=None):
     v.add_argument("--area", required=True); v.add_argument("--usage", required=True)
     v.add_argument("--scope", choices=("personal", "project"), default="personal")
     v.add_argument("--replace", action="store_true")
-    v.add_argument("--no-push", action="store_true")
+    push_options = v.add_mutually_exclusive_group()
+    push_options.add_argument("--push", action="store_true", help="push this save even if setup chose not to")
+    push_options.add_argument("--no-push", action="store_true", help="don't push this save even if setup chose to")
     v.add_argument("--new-area", action="store_true", help="allow creating AREA if it does not exist")
     v.add_argument("--test-name")
     v.add_argument("--test-runner", help="JSON argv for the test interpreter")
@@ -44,14 +49,31 @@ def main(argv=None):
     setup.add_argument("--mode", choices=("local", "existing", "clone"))
     setup.add_argument("--path"); setup.add_argument("--remote")
     setup.add_argument("--git", action="store_true")
-    setup.add_argument("--shared", action="store_true", default=None)
+    setup.add_argument("--shared", action=argparse.BooleanOptionalAction, default=None,
+                       help="project library: --shared commits it with the project, --no-shared keeps it private")
+    setup.add_argument("--push", action=argparse.BooleanOptionalAction, default=None,
+                       help="personal git library: push scripts to the git remote automatically")
     t = sub.add_parser("test"); t.add_argument("name", nargs="?",
                                                 help="one script's file name; omit to test every saved script")
+    trust_cmd = sub.add_parser("trust", help="review and explicitly approve a project library")
+    trust_cmd.add_argument("--project", action="store_true", required=True)
     a = ap.parse_args(argv)
     try:
+        if a.cmd == "trust":
+            project = paths.project_root()
+            if project is None:
+                raise ValueError("no project library here")
+            root = (project / ".muscle-memory").resolve()
+            if not (root / "INDEX.md").is_file():
+                raise ValueError("no project library here")
+            from . import trust
+            trust.approve(root)
+            print(f"Trusted project library {root}.")
+            return 0
         if a.cmd == "setup":
             print(server.call("mm_setup", {"target": a.target, "mode": a.mode, "path": a.path,
-                                            "remote": a.remote, "git": a.git, "shared": a.shared})[0])
+                                            "remote": a.remote, "git": a.git, "shared": a.shared,
+                                            "push": a.push})[0])
             return 0
         if a.cmd == "list":
             text = core.list_areas() if not a.area else core.list_area(" ".join(a.area))
@@ -99,12 +121,12 @@ def main(argv=None):
                             Path(a.test).read_text(encoding="utf-8"), a.area, a.usage,
                             scope=a.scope, new_area=a.new_area, runner=runner,
                             test_name=a.test_name, test_runner=test_runner,
-                            replace=a.replace, push=not a.no_push)
+                            replace=a.replace, push=True if a.push else False if a.no_push else None)
         print(msg)
         if msg == onboarding.NOT_SET_UP:
             return 3
         return 0 if ok else 1
-    except (ValueError, OSError, subprocess.TimeoutExpired) as e:
+    except (ValueError, OSError, subprocess.SubprocessError) as e:
         if str(e) == onboarding.NOT_SET_UP:
             print(onboarding.NOT_SET_UP)
             return 3

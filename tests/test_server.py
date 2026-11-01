@@ -96,7 +96,30 @@ class TextAndBudgetTests(unittest.TestCase):
 
     def test_text_budget(self):
         combined = len(json.dumps(server.TOOLS)) + len(server.INSTRUCTIONS)
-        self.assertLessEqual(combined, 5400, f"combined text is {combined} chars")
+        self.assertLessEqual(combined, 3500, f"combined text is {combined} chars")
+
+    def test_advertised_safety_and_schema_contract(self):
+        blob = json.dumps(server.TOOLS) + server.INSTRUCTIONS
+        for phrase in ("mm_list", "before", "project", "No matching", "--dry-run",
+                       "irreversible", "explicit yes", "replace: true", "MM_SCRIPT",
+                       "MM_LIBRARY", "exit 0", "saves nothing", "project never commits",
+                       "after asking", "shared", "private"):
+            self.assertIn(phrase.lower(), blob.lower())
+        by_name = {t["name"]: t for t in server.TOOLS}
+        self.assertEqual(set(by_name), {"mm_list", "mm_run", "mm_save", "mm_setup"})
+        for name, required in {"mm_list": (), "mm_run": ("script",),
+                               "mm_save": ("name", "code", "test", "area", "usage"),
+                               "mm_setup": ()}.items():
+            schema = by_name[name]["inputSchema"]
+            self.assertEqual(tuple(schema.get("required", ())), required)
+        props = {name: tool["inputSchema"]["properties"] for name, tool in by_name.items()}
+        self.assertEqual(set(props["mm_list"]), {"area"})
+        self.assertEqual(set(props["mm_run"]), {"script", "args"})
+        self.assertEqual(set(props["mm_save"]), {"name", "code", "test", "test_name", "test_runner", "area", "usage", "new_area", "runner", "scope", "replace"})
+        self.assertEqual(set(props["mm_setup"]), {"target", "mode", "path", "remote", "git", "shared", "push"})
+        self.assertEqual(props["mm_setup"]["mode"]["enum"], ["local", "existing", "clone"])
+        self.assertEqual(props["mm_setup"]["target"]["enum"], ["personal", "project"])
+        self.assertEqual(props["mm_save"]["scope"]["enum"], ["personal", "project"])
 
     def test_no_python_lockin_in_text(self):
         blob = json.dumps(server.TOOLS) + server.INSTRUCTIONS
@@ -105,7 +128,7 @@ class TextAndBudgetTests(unittest.TestCase):
 
     def test_instructions_cover_rules(self):
         for phrase in ("mm_list", "ask the user", "language that fits"):
-            self.assertIn(phrase, server.INSTRUCTIONS)
+            self.assertIn(phrase.lower(), server.INSTRUCTIONS.lower())
 
     def test_explicit_yes_gate_is_irreversible_only(self):
         """Fix round 1: the wait-for-explicit-yes gate must attach to [irreversible] only,
@@ -118,10 +141,10 @@ class TextAndBudgetTests(unittest.TestCase):
             self.assertIn("irreversible", s)
             self.assertNotIn("write", s)
 
-    def test_initialize_echoes_protocol_and_has_instructions(self):
+    def test_initialize_negotiates_protocol_and_has_instructions(self):
         reply = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize",
                                 "params": {"protocolVersion": "2099-01-01"}})
-        self.assertEqual(reply["result"]["protocolVersion"], "2099-01-01")
+        self.assertEqual(reply["result"]["protocolVersion"], server.SUPPORTED_PROTOCOLS[0])
         self.assertEqual(reply["result"]["instructions"], server.INSTRUCTIONS)
 
 

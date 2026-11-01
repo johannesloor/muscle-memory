@@ -1,6 +1,7 @@
 """Task 5: save scope, clashes, replace rollback and per-folder git behaviour."""
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +26,9 @@ class StoreTest(unittest.TestCase):
         self.base = Path(self.tmp.name)
         self.project = self.base / "project"
         self.project.mkdir()
+        from muscle_memory_mcp import trust
+        self._trust_patch = mock.patch.object(trust, "_state_path", return_value=self.base / "trust.json")
+        self._trust_patch.start()
         self.personal = self.base / "personal"
         self.personal.mkdir()
         self._env = {k: os.environ.get(k) for k in ("MUSCLE_MEMORY_DIR", "MUSCLE_MEMORY_PROJECT_DIR")}
@@ -53,6 +57,9 @@ class StoreTest(unittest.TestCase):
         git(root, "commit", "--allow-empty", "-qm", "initial")
 
     def save(self, name="new.py", code=CODE, test=GOOD_TEST, area="General", usage="new.py — new [pure]", **kw):
+        if kw.get("scope") == "project":
+            from muscle_memory_mcp import trust
+            trust.approve(self.project / ".muscle-memory")
         return store.save(name, code, test, area, usage, **kw)
 
     def test_scope_project_writes_without_commit(self):
@@ -75,6 +82,51 @@ class StoreTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "x.py already exists in the project library"):
             self.save("x.py")
         self.assertFalse((self.personal / "scripts" / "x.py").exists())
+
+    def test_replace_without_runner_reverts_to_builtin_and_commits_sidecar_deletions(self):
+        self.setup_library(self.personal)
+        self.init_git(self.personal)
+        ok, msg = self.save(runner=[sys.executable, "-I"],
+                            test_name="test_new.py", test_runner=[sys.executable], push=False)
+        self.assertTrue(ok, msg)
+        ok, msg = self.save(replace=True, usage="new.py — built-in runner [pure]", push=False)
+        self.assertTrue(ok, msg)
+        self.assertIn("committed", msg)
+        for name in ("new.py.runner.json", "new.py.test.json"):
+            self.assertFalse((self.personal / "scripts" / name).exists())
+            tracked = git(self.personal, "ls-tree", "--name-only", "HEAD", "scripts/" + name).stdout
+            self.assertEqual(tracked, "")
+        self.assertEqual(git(self.personal, "status", "--porcelain").stdout, "")
+        from muscle_memory_mcp import core, runners
+        self.assertEqual(runners.runner_for(self.personal / "scripts" / "new.py"), [sys.executable])
+        self.assertEqual(core.run("new.py", [])[1].strip(), "ok")
+
+    def test_failed_replace_restores_removed_runner_and_test_metadata(self):
+        self.setup_library(self.personal)
+        ok, msg = self.save(runner=[sys.executable, "-I"],
+                            test_name="test_new.py", test_runner=[sys.executable], push=False)
+        self.assertTrue(ok, msg)
+        files = [self.personal / "scripts" / "new.py.runner.json",
+                 self.personal / "scripts" / "new.py.test.json",
+                 self.personal / "scripts" / "new.py",
+                 self.personal / "tests" / "test_new.py", self.personal / "INDEX.md"]
+        before = [p.read_bytes() for p in files]
+        ok, _ = self.save(replace=True, test=BAD_TEST, push=False)
+        self.assertFalse(ok)
+        self.assertEqual([p.read_bytes() for p in files], before)
+
+    def test_replace_commits_deletion_of_old_default_test(self):
+        self.setup_library(self.personal)
+        self.init_git(self.personal)
+        ok, msg = self.save(push=False)
+        self.assertTrue(ok, msg)
+        ok, msg = self.save(replace=True, test_name="test_new.txt",
+                            test_runner=[sys.executable], push=False)
+        self.assertTrue(ok, msg)
+        self.assertIn("committed", msg)
+        self.assertFalse((self.personal / "tests" / "test_new.py").exists())
+        self.assertEqual(git(self.personal, "ls-tree", "--name-only", "HEAD", "tests/test_new.py").stdout, "")
+        self.assertEqual(git(self.personal, "status", "--porcelain").stdout, "")
 
     def test_replace_updates_index_line_in_place(self):
         self.setup_library(self.personal)
@@ -193,6 +245,7 @@ class StoreTest(unittest.TestCase):
     def test_git_add_failure_never_commits(self):
         self.setup_library(self.personal)
         self.init_git(self.personal)
+        (self.personal / "scripts" / "new.py").write_text(CODE, encoding="utf-8")
         before = git(self.personal, "rev-parse", "HEAD").stdout.strip()
         with mock.patch.object(store, "_run_git", side_effect=[(0, ".git", ""), (1, "", "add failed")]) as mocked:
             msg = store._save_personal_git(self.personal, "new.py", "new.py — new [pure]",
@@ -228,7 +281,7 @@ class StoreTest(unittest.TestCase):
         self.init_git(self.personal)
         git(self.personal, "remote", "add", "origin", str(self.base / "missing-remote"))
         before = git(self.personal, "rev-parse", "HEAD").stdout.strip()
-        ok, msg = self.save()
+        ok, msg = self.save(push=True)
         self.assertTrue(ok, msg)
         self.assertIn("push failed", msg)
         self.assertNotEqual(git(self.personal, "rev-parse", "HEAD").stdout.strip(), before)

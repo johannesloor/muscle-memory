@@ -54,7 +54,7 @@ def runner_metadata_path(script_path):
     return script_path.with_name(script_path.name + ".runner.json")
 
 
-def _resolve_executable(exe, script_name):
+def resolve_executable(exe, script_name):
     """Resolve exe (a bare name or an absolute path) to an absolute, executable path."""
     if os.path.isabs(exe) and os.access(exe, os.X_OK):
         return exe
@@ -64,7 +64,7 @@ def _resolve_executable(exe, script_name):
     return resolved
 
 
-def _builtin_argv_prefix(suffix):
+def builtin_argv_prefix(suffix):
     """Unresolved argv prefix (argv[0] may still be a bare name) for a built-in suffix."""
     if suffix == ".py":
         return [sys.executable]
@@ -84,6 +84,26 @@ def _builtin_argv_prefix(suffix):
     return list(argv)
 
 
+# cmd.exe re-parses a batch file's command line itself, and Python's list2cmdline quoting does
+# not escape for it (the "BatBadBut" class), so these characters in an argument could start a
+# second command. Reject them rather than attempt cmd.exe escaping.
+CMD_METACHARACTERS = set('&|<>^%!"\r\n')
+
+
+def check_cmd_args(script: Path, argv: list[str], args) -> None:
+    """Raise ValueError if script runs through cmd.exe and an argument holds a cmd metacharacter."""
+    via_cmd = (Path(script).suffix.lower() in WINDOWS_ONLY_EXTENSIONS
+               or Path(argv[0]).name.lower() in ("cmd", "cmd.exe"))
+    if not via_cmd:
+        return
+    for a in args:
+        bad = sorted(CMD_METACHARACTERS & set(a))
+        if bad:
+            shown = " ".join(repr(c) for c in bad)
+            raise ValueError(f"argument {a!r} contains {shown}, which cmd.exe would interpret; "
+                             "batch scripts only accept arguments without & | < > ^ % ! \" or newlines")
+
+
 def runner_for(script: Path) -> list[str]:
     """Full argv prefix (argv[0] resolved to an absolute path) to run script.
 
@@ -101,8 +121,8 @@ def runner_for(script: Path) -> list[str]:
             raise ValueError(f"runner metadata for {script.name} must be a JSON object with an 'argv' list")
         argv = validate_runner_argv(data["argv"])
     else:
-        argv = _builtin_argv_prefix(script.suffix.lower())
-    resolved = _resolve_executable(argv[0], script.name)
+        argv = builtin_argv_prefix(script.suffix.lower())
+    resolved = resolve_executable(argv[0], script.name)
     return [resolved, *argv[1:]]
 
 

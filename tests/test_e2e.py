@@ -35,7 +35,7 @@ NATIVE_RUNNER_SKIP_REASON = (
 if IS_WINDOWS:
     SCRIPT_NAME = "greet.ps1"
     SCRIPT_CODE = "param($name)\nWrite-Output \"hi $name\"\n"
-    # Mirrors runners._builtin_argv_prefix's own pwsh-then-powershell fallback, so the test
+    # Mirrors runners.builtin_argv_prefix's own pwsh-then-powershell fallback, so the test
     # keeps working on a runner that only has Windows PowerShell installed.
     TEST_CODE = (
         "$runner = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }\n"
