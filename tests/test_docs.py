@@ -53,9 +53,11 @@ class ReadmeTests(unittest.TestCase):
         self.assertLessEqual(len(snippet), 3)
         self.assertIn("mm_list", snippet[0])
         self.assertIn("mm_run", snippet[0])
-        self.assertIn("result", snippet[1])
+        # Save before the turn ends: the reply itself ends the turn, so "after the result" never fires.
+        self.assertIn("Before ending your turn", snippet[1])
         self.assertIn("mm_save", snippet[1])
-        self.assertIn("deliverable", snippet[2])
+        self.assertIn("not project code", snippet[1])
+        self.assertIn("If you saved", snippet[2])
         self.assertIn("Tool descriptions", self.text)
 
     def test_pitch_line_lives_in_registry_description(self):

@@ -127,7 +127,7 @@ class TextAndBudgetTests(unittest.TestCase):
             self.assertNotIn(banned, blob)
 
     def test_instructions_cover_rules(self):
-        for phrase in ("mm_list", "ask the user", "language that fits"):
+        for phrase in ("mm_list", "ask the user", "language that fits", "before ending your turn"):
             self.assertIn(phrase.lower(), server.INSTRUCTIONS.lower())
 
     def test_explicit_yes_gate_is_irreversible_only(self):
