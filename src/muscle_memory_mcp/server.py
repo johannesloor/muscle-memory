@@ -12,7 +12,7 @@ from . import __version__, core, onboarding, paths
 # client's requested revision when listed, otherwise the newest.
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
-INSTRUCTIONS = "For reusable substeps, call mm_list before writing code; project matches win. Run matches; no match, use language that fits. Ask the user before mm_setup. Save reusable work after results. Project libraries run only after the user runs CLI trust --project; never run it for them."
+INSTRUCTIONS = "For reusable substeps, call mm_list before writing code; project matches win. Run matches; no match, use language that fits. Ask the user before mm_setup. Before ending your turn, save reusable helpers (not project code) with mm_save, via a background agent if available; name what you saved. Project libraries run only after the user runs CLI trust --project; never run it for them."
 
 
 TOOLS = [

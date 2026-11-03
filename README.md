@@ -61,8 +61,8 @@ Add this standing rule to your `AGENTS.md`, `CLAUDE.md`, `SOUL.md` or equivalent
 
 ```text
 Before writing helper code, check muscle-memory with mm_list and run a match with mm_run.
-After giving the user the result, save reusable new helpers with mm_save.
-Skip this for code that is itself the deliverable.
+Before ending your turn, save reusable new helper scripts (not project code) with mm_save; use a background agent if available so the reply isn't delayed.
+If you saved something, name it in the reply.
 ```
 
 Tool descriptions contain the safety and testing specifics for each operation.

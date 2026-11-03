@@ -48,14 +48,12 @@ class ReadmeTests(unittest.TestCase):
         self.assertNotIn("safe isolated one-shot", self.text)
         self.assertNotIn("always runs the latest", self.text)
 
-    def test_agents_snippet_has_standing_rule_and_safety_order(self):
+    def test_agents_snippet_is_short_and_names_the_tools(self):
         snippet = self.text.split("```text", 1)[1].split("```", 1)[0].strip().splitlines()
         self.assertLessEqual(len(snippet), 3)
-        self.assertIn("mm_list", snippet[0])
-        self.assertIn("mm_run", snippet[0])
-        self.assertIn("result", snippet[1])
-        self.assertIn("mm_save", snippet[1])
-        self.assertIn("deliverable", snippet[2])
+        joined = "\n".join(snippet)
+        for tool in ("mm_list", "mm_run", "mm_save"):
+            self.assertIn(tool, joined)
         self.assertIn("Tool descriptions", self.text)
 
     def test_pitch_line_lives_in_registry_description(self):
